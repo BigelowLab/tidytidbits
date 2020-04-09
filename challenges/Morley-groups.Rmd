@@ -1,0 +1,52 @@
+---
+title: "Morley"
+author: Ben Tupper
+date: April 8, 2020
+output: md_document
+---
+
+## Replicate the examples found in `?morley` using tidy tools
+
+Here are the steps and output of the examples found in `?morley`.
+
+```{r}
+require(stats)
+require(graphics)
+michelson <- transform(morley,
+                       Expt = factor(Expt), Run = factor(Run))
+xtabs(~ Expt + Run, data = michelson)  # 5 x 20 balanced (two-way)
+```
+
+```{r}
+plot(Speed ~ Expt, data = michelson,
+     main = "Speed of Light Data", xlab = "Experiment No.")
+```
+
+```{r}
+fm <- aov(Speed ~ Run + Expt, data = michelson)
+summary(fm)
+```
+
+```{r}
+fm0 <- update(fm, . ~ . - Run)
+anova(fm0, fm)
+```
+
+### Challenges
+
+Start by casting the `morley` data as a tibble rather than as a data.frame.
+
+```{r}
+library(dplyr)
+x <- morley %>%
+  dplyr::as_tibble()
+```
+
+
+Q1: How might you produce the contignecy table (2d counts) using tidy tools?
+
+Q2: How might you generate the figure using ggplot2 and friends? (Bonus, can you make it a violin plot?)
+
+Q3: How might you use tidy tools to extract coefficients and metrics out of the models `fm` and `fm0`?
+
+

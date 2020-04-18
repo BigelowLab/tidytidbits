@@ -1,6 +1,10 @@
 ---
 title: "Maine COVID19 By County"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
 ---
 
 The Maine CDC COVID19 [information site](https://www.maine.gov/dhhs/mecdc/infectious-disease/epi/airborne/coronavirus.shtml) is a wonderful resource for getting updated info.  The site provides a number of tables with counts of cases by county, age and sex.  The site also provides a map of cases by county which is interesting, but misses the importantance normalizing counts by population.  This note attempts to augment the state case by county map with a case density by county map companion using [tidyverse tools](https://www.tidyverse.org/) (and friends).

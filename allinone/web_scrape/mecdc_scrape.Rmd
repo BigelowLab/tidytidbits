@@ -1,0 +1,107 @@
+---
+title: "Maine COVID19 By County"
+output: html_notebook
+---
+
+The Maine CDC COVID19 [information site](https://www.maine.gov/dhhs/mecdc/infectious-disease/epi/airborne/coronavirus.shtml) is a wonderful resource for getting updated info.  The site provides a number of tables with counts of cases by county, age and sex.  The site also provides a map of cases by county which is interesting, but misses the importantance normalizing counts by population.  This note attempts to augment the state case by county map with a case density by county map companion using [tidyverse tools](https://www.tidyverse.org/) (and friends).
+
+We first retrieve the most recent census info (10 years old now) from the Maine State economist's office.  The office published spreadsheets of population by [county](https://www.maine.gov/economist/state/pub/ME-Pop-County-2010.xls)
+
+```{r}
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(readxl))
+suppressPackageStartupMessages(library(rvest))
+suppressPackageStartupMessages(library(xml2))
+suppressPackageStartupMessages(library(sf))
+suppressPackageStartupMessages(library(USAboundaries))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(patchwork))
+```
+
+Shown below are the steps to gather the data, but to keep things simple the steps are commented out and only the result becomes an R variable.  It's an excel file; these are easy to read using [readxl](https://readxl.tidyverse.org/)
+
+
+```{r}
+#MePop<- readxl::read_xls("~/Downloads/ME-Pop-County-2010.xls") %>% 
+#  dplyr::select(1:2)
+#colnames(MePop) <- c("County", "Pop2010")
+#MePop <- v %>% arrange(County)
+#dput(MePop)
+MePop <- structure(list(County = c("Androscoggin", "Aroostook", "Cumberland", 
+"Franklin", "Hancock", "Kennebec", "Knox", "Lincoln", "Oxford", 
+"Penobscot", "Piscataquis", "Sagadahoc", "Somerset", "Waldo", 
+"Washington", "York"), Pop2010 = c(107702, 71870, 281674, 30768, 
+54418, 122151, 39736, 34457, 57833, 153923, 17535, 35293, 52228, 
+38786, 32856, 197131)), row.names = c(NA, -16L), class = c("tbl_df", 
+"tbl", "data.frame"))
+```
+
+Next we use web-scraping tools to fetch the table from the website.  [rvest](http://rvest.tidyverse.org/) makes this easy.
+
+```{r}
+uri <- "https://www.maine.gov/dhhs/mecdc/infectious-disease/epi/airborne/coronavirus.shtml"
+MeCDC <- xml2::read_html(uri)
+```
+
+
+Like many HTML tables, the table itself is messy - great for reading online but annoying to parse for computation.  Through trial and error the correct table identified (it's currently the third table on the page.)
+
+```{r}
+tbl <- MeCDC %>%
+  rvest::html_nodes("table") %>%
+  .[[3]] %>%
+  rvest::html_table()
+str(tbl)
+```
+
+Uggg. The column names are repeats of the table name, and the first row has the actual column names.
+
+So, we will do some back flips to rename the column.  Then we will convert the counts columns to numerics,
+followed by ordering alphabetically and merging in the population counts.  Finally, we add a density column (per 1000 people) using a function - each new column name is prepended with "d" for density.
+
+```{r}
+colnames(tbl) <- gsub("[0-9]", "", unname(as.vector(tbl[1,])))
+x <- tbl[-1,] %>%
+  dplyr::as_tibble() %>%
+  dplyr::mutate_at(colnames(tbl)[-1], as.numeric) %>%
+  dplyr::arrange(County) %>%
+  dplyr::left_join(MePop, by = "County") %>%
+  dplyr::mutate(
+    dConfirmed = Confirmed/(Pop2010/1000),
+    dRecovered = Recovered/(Pop2010/1000),
+    dHospitalizations = Hospitalizations/(Pop2010/1000),
+    dDeaths  = Deaths/(Pop2010/1000)
+  )
+x
+```
+
+Phew!
+
+Now let's make side-by-side plots of counts by county and density by county. First we need to get county geometries from [USAboundaries](https://github.com/ropensci/USAboundaries).  We then merge with our table above.
+
+```{r}
+x <- USAboundaries::us_counties(states = "Maine", resolution = "high") %>%
+  dplyr::select(name, geometry) %>%
+  dplyr::rename(County = 'name') %>%
+  dplyr::arrange(County) %>%
+  dplyr::left_join(x, by = "County")
+x
+```
+
+Now we plot the two side by side using [ggplot2](https://ggplot2.tidyverse.org) and [patchwork](https://github.com/thomasp85/patchwork).
+
+```{r, echo = FALSE}
+caption <- sprintf("Source: Maine CDC on %s", format(Sys.Date(), "%Y-%m-%d"))
+p1 <- ggplot2::ggplot(data = x)  +
+  ggplot2::geom_sf(ggplot2::aes(fill = Confirmed)) +
+  ggplot2::labs(title = 'Confirmed Cases',
+      fill = "Counts",
+      caption = caption)
+
+p2 <- ggplot2::ggplot(data = x)  +
+  ggplot2::geom_sf(ggplot2::aes(fill = dConfirmed)) + 
+  ggplot2::labs(title = "Confirmed Cases per 1000 people",
+      fill = "Counts/1000",
+      caption = caption)
+print(p1 + p2)
+```
